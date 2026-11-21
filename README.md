@@ -1,5 +1,7 @@
 # Minikonferencia z fyziky
 
+<img src="konferencia_screenshot.png" alt="Screenshot of the physics conference registration page" width="50%">
+
 PHP 8.1+ / MySQL 8+ / PHPMailer application. Public Apache document root: **web/**.
 
 ## Install
