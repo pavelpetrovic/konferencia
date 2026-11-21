@@ -7,4 +7,6 @@ return [
  'smtp_user'=>'metodka01@gmail.com','smtp_password'=>'GOOGLE_APP_PASSWORD',
  'mail_from'=>'metodka01@gmail.com',
  'timezone'=>'Europe/Bratislava',
+ // Generate once: php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
+ 'code_secret'=>'REPLACE_WITH_64_RANDOM_HEX_CHARACTERS',
 ];
