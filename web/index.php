@@ -109,7 +109,7 @@ function time_label(string $start,int $slot): string {
 <?php foreach($lessons as $l):if(strtotime($l['starts_at'])<=time())continue;for($n=1;$n<=8;$n++):$key=$l['id'].':'.$n;$taken=isset($takenSlots[$key])&&$takenSlots[$key]!==(int)$me['id']; ?>
 <option value="<?=$key?>" <?=$taken?'disabled':''?> <?=($mine['lesson_id']??null)==$l['id']&&($mine['slot']??null)==$n?'selected':''?>><?=h(date('d.m.Y',strtotime($l['starts_at'])).' '.time_label($l['starts_at'],$n).($taken?' (obsadené)':''))?></option>
 <?php endfor;endforeach;?></select>
-<input type="hidden" name="lesson_id" value="<?=h($mine['lesson_id']??0)?>"><input type="hidden" name="slot" value="<?=h($mine['slot']??0)?>"><button name="action" value="slot">Uložiť termín</button></form>
+<button name="action" value="slot">Uložiť termín</button></form>
 </div></section>
 <?php else: ?>
 <div class="columns"><section class="panel"><h3>Poslať nový prístupový kód</h3><p class="muted small">Kód príde na školský e-mail. Pri opakovanom vyžiadaní zostáva rovnaký.</p><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="request_student">Meno</label><select id="request_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><button name="action" value="request">Poslať kód e-mailom</button></form></section>
