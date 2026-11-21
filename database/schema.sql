@@ -7,7 +7,6 @@ CREATE TABLE students (
  class_id INT UNSIGNED NOT NULL,
  name VARCHAR(180) NOT NULL,
  email VARCHAR(254) NOT NULL,
- code_hash VARCHAR(255) DEFAULT NULL,
  code_requested_at DATETIME DEFAULT NULL,
  UNIQUE KEY uq_student_email (email),
  KEY ix_student_class (class_id),
