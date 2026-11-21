@@ -8,11 +8,11 @@ PHP 8.1+ / MySQL 8+ / PHPMailer application. Public Apache document root: **web/
 2. Import schema **once**: `mysql -u konferencia -p konferencia < database/schema.sql`
 3. `cp config.example.php config.php` and edit DB and SMTP credentials (can reuse the Gmail SMTP settings from the tablet app).
 4. `composer install --no-dev --optimize-autoloader`
-5. Configure Apache HTTPS virtual host DocumentRoot to `<repository>/web`. Enable `AllowOverride All` or disable directory listing in the vhost.
-6. Import CSVs from a private location (do **not** commit students' emails to a public repository):
+6. Configure Apache HTTPS virtual host DocumentRoot to `<repository>/web`. Enable `AllowOverride All` or disable directory listing in the vhost.
+7. Import CSVs from a private location (do **not** commit students' emails to a public repository):
    `php scripts/import.php students 3AA /private/ziaci_3AA.csv`
    `php scripts/import.php topics 3AA /private/temy_3AA.csv`
-7. Add lessons in phpMyAdmin or mysql:
+8. Add lessons in phpMyAdmin or mysql:
    `INSERT INTO lessons(class_id,starts_at,note) SELECT id,'2026-12-03 09:00:00','' FROM classes WHERE name='3AA';`
    Each lesson automatically has 8 five-minute slots, starting at the configured time.
 
@@ -27,7 +27,7 @@ Imports update matching records and preserve existing assignments; they do not d
 ## Rules
 
 - Students select their class and name and request an access code by email.
-- Requesting a new code invalidates the previous code. Requests have a two-minute cooldown.
+- Requesting a code again sends the same permanent code (derived using the private server secret). Requests have a two-minute cooldown.
 - Students sign in using their name and emailed code. Session login remains valid until logout or session expiry.
 - Each student can choose one topic and one slot independently, and change or release either.
 - Each topic and each lesson slot can belong to at most one student.
