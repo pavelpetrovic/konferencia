@@ -39,29 +39,45 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    if(!$s || !hash_equals(student_code($s),strtoupper(trim((string)($_POST['code']??'')))))
     throw new RuntimeException('Nesprávne meno alebo prístupový kód.');
    session_regenerate_id(true);$_SESSION['login_attempts']=0;$_SESSION['student_id']=(int)$s['id'];flash('Prihlásenie úspešné.');
-  }elseif(in_array($action,['topic','slot'],true)){
-   $me=student();
-   if(!$me || (int)$me['class_id']!==$cid)throw new RuntimeException('Najprv sa prihlás.');
-   db()->beginTransaction();
-   // Lock student's row so simultaneous updates cannot overwrite each other.
-   q('SELECT id FROM students WHERE id=? FOR UPDATE',[$me['id']]);
-   q('INSERT IGNORE INTO selections(student_id,class_id) VALUES(?,?)',[$me['id'],$cid]);
-   if($action==='topic'){
-    $topic=(int)($_POST['topic_id']??0);
-    if($topic && !q('SELECT id FROM topics WHERE id=? AND class_id=?',[$topic,$cid])->fetch())throw new RuntimeException('Neplatná téma.');
-    q('UPDATE selections SET topic_id=? WHERE student_id=?',[$topic?:null,$me['id']]);
-    flash('Výber témy bol uložený.');
-   }else{
-    $choice=(string)($_POST['slot_choice']??'');
-    if(!preg_match('/^(0:0|[1-9][0-9]*:[1-8])$/D',$choice))throw new RuntimeException('Neplatný termín.');
-    [$lesson,$slot]=array_map('intval',explode(':',$choice));
-    if(($lesson===0)!==($slot===0) || $slot<0 || $slot>8)throw new RuntimeException('Neplatný termín.');
-    if($lesson && !q('SELECT id FROM lessons WHERE id=? AND class_id=? AND starts_at>NOW()',[$lesson,$cid])->fetch())
-     throw new RuntimeException('Tento termín nie je dostupný.');
-    q('UPDATE selections SET lesson_id=?,slot=? WHERE student_id=?',[$lesson?:null,$slot?:null,$me['id']]);
-    flash('Termín bol uložený.');
-   }
-   db()->commit();
+  } elseif ($action === 'selection') {
+    $me = student();
+
+    if (!$me || (int) $me['class_id'] !== $cid) {
+      throw new RuntimeException('Najprv sa prihlás.');
+    }
+
+    $topic = (int) ($_POST['topic_id'] ?? 0);
+    $choice = (string) ($_POST['slot_choice'] ?? '');
+
+    if ($topic && !q('SELECT id FROM topics WHERE id=? AND class_id=?', [$topic, $cid])->fetch()) {
+      throw new RuntimeException('Neplatná téma.');
+    }
+
+    if (!preg_match('/^(0:0|[1-9][0-9]*:[1-8])$/D', $choice)) {
+      throw new RuntimeException('Neplatný termín.');
+    }
+
+    [$lesson, $slot] = array_map('intval', explode(':', $choice));
+
+    if ($lesson && !q('SELECT id FROM lessons WHERE id=? AND class_id=? AND starts_at>NOW()', [$lesson, $cid])->fetch()) {
+      throw new RuntimeException('Tento termín nie je dostupný.');
+    }
+
+    db()->beginTransaction();
+
+    // Serialize changes made by the same student.
+    q('SELECT id FROM students WHERE id=? FOR UPDATE', [$me['id']]);
+    q('INSERT IGNORE INTO selections(student_id,class_id) VALUES(?,?)', [$me['id'], $cid]);
+
+    // Both values are saved atomically. Database uniqueness constraints
+    // prevent two students from choosing the same topic or presentation slot.
+    q(
+      'UPDATE selections SET topic_id=?, lesson_id=?, slot=? WHERE student_id=?',
+      [$topic ?: null, $lesson ?: null, $slot ?: null, $me['id']]
+    );
+
+    db()->commit();
+    flash('Výber bol uložený.');
   }else throw new RuntimeException('Neznáma operácia.');
  }catch(PDOException $e){
   if(db()->inTransaction())db()->rollBack();
@@ -98,19 +114,52 @@ function time_label(string $start,int $slot): string {
 <div class="topline"><h2><?=h($cl['name'])?></h2><a href="/">← Všetky triedy</a></div>
 <?php if($me): ?>
 <section class="panel"><div class="topline"><div>Prihlásený/á: <strong><?=h($me['name'])?></strong></div><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><button class="secondary" name="action" value="logout">Odhlásiť sa</button></form></div>
-<div class="columns">
-<form method="post"><h3>Moja téma</h3><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>">
-<label for="topic">Vyber alebo zmeň tému</label><select name="topic_id" id="topic"><option value="0">— Bez témy —</option>
-<?php foreach($topics as $t):$taken=isset($takenTopics[$t['id']])&&$takenTopics[$t['id']]!==(int)$me['id']; ?>
-<option value="<?=$t['id']?>" <?=$taken?'disabled':''?> <?=($mine['topic_id']??null)==$t['id']?'selected':''?>><?=h($t['number'].'. '.$t['title'].($taken?' (obsadené)':''))?></option>
-<?php endforeach;?></select><button name="action" value="topic">Uložiť tému</button></form>
-<form method="post"><h3>Môj termín</h3><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>">
-<label for="slot">Vyber alebo zmeň termín</label><select name="slot_choice" id="slot"><option value="0:0">— Bez termínu —</option>
-<?php foreach($lessons as $l):if(strtotime($l['starts_at'])<=time())continue;for($n=1;$n<=8;$n++):$key=$l['id'].':'.$n;$taken=isset($takenSlots[$key])&&$takenSlots[$key]!==(int)$me['id']; ?>
-<option value="<?=$key?>" <?=$taken?'disabled':''?> <?=($mine['lesson_id']??null)==$l['id']&&($mine['slot']??null)==$n?'selected':''?>><?=h(date('d.m.Y',strtotime($l['starts_at'])).' '.time_label($l['starts_at'],$n).($taken?' (obsadené)':''))?></option>
-<?php endfor;endforeach;?></select>
-<button name="action" value="slot">Uložiť termín</button></form>
-</div></section>
+<form method="post">
+  <input type="hidden" name="csrf" value="<?= h(csrf()) ?>">
+  <input type="hidden" name="class" value="<?= $cid ?>">
+
+  <div class="columns">
+    <div>
+      <h3>Moja téma</h3>
+      <label for="topic">Vyber alebo zmeň tému</label>
+      <select name="topic_id" id="topic">
+        <option value="0">— Bez témy —</option>
+        <?php foreach ($topics as $t):
+          $taken = isset($takenTopics[$t['id']]) && $takenTopics[$t['id']] !== (int) $me['id'];
+        ?>
+          <option value="<?= $t['id'] ?>" <?= $taken ? 'disabled' : '' ?> <?= ($mine['topic_id'] ?? null) == $t['id'] ? 'selected' : '' ?>>
+            <?= h($t['number'] . '. ' . $t['title'] . ($taken ? ' (obsadené)' : '')) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div>
+      <h3>Môj termín</h3>
+      <label for="slot">Vyber alebo zmeň termín</label>
+      <select name="slot_choice" id="slot">
+        <option value="0:0">— Bez termínu —</option>
+        <?php foreach ($lessons as $l):
+          if (strtotime($l['starts_at']) <= time()) {
+            continue;
+          }
+
+          for ($n = 1; $n <= 8; $n++):
+            $key = $l['id'] . ':' . $n;
+            $taken = isset($takenSlots[$key]) && $takenSlots[$key] !== (int) $me['id'];
+        ?>
+            <option value="<?= $key ?>" <?= $taken ? 'disabled' : '' ?> <?= ($mine['lesson_id'] ?? null) == $l['id'] && ($mine['slot'] ?? null) == $n ? 'selected' : '' ?>>
+              <?= h(date('d.m.Y', strtotime($l['starts_at'])) . ' ' . time_label($l['starts_at'], $n) . ($taken ? ' (obsadené)' : '')) ?>
+            </option>
+          <?php endfor; ?>
+        <?php endforeach; ?>
+      </select>
+    </div>
+  </div>
+
+  <button name="action" value="selection">Uložiť výber</button>
+</form>
+</section>
 <?php else: ?>
 <div class="columns"><section class="panel"><h3>Poslať nový prístupový kód</h3><p class="muted small">Kód príde na školský e-mail. Pri opakovanom vyžiadaní zostáva rovnaký.</p><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="request_student">Meno</label><select id="request_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><button name="action" value="request">Poslať kód e-mailom</button></form></section>
 <section class="panel"><h3>Prihlásenie a zmena výberu</h3><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="login_student">Meno</label><select id="login_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><label for="code">Prístupový kód z e-mailu</label><input id="code" name="code" autocomplete="off" required><button name="action" value="login">Prihlásiť sa</button></form></section></div>
