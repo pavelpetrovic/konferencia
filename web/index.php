@@ -21,20 +21,24 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    if($locked['code_requested_at'] && strtotime($locked['code_requested_at'])>time()-120){
     db()->rollBack();throw new RuntimeException('Nový kód možno vyžiadať najskôr o dve minúty.');
    }
-   // Each re-request replaces the old code. If SMTP fails, retain the previous hash.
-   $code=strtoupper(bin2hex(random_bytes(8)));
+   // Deterministic secret-derived code: resending does not invalidate an older email.
+   $code=student_code($s);
    q('UPDATE students SET code_requested_at=NOW() WHERE id=?',[$id]);
    db()->commit();
    try{send_code($s['email'],$s['name'],$code);}
    catch(Throwable $e){error_log('Conference email failed: '.$e->getMessage());throw new RuntimeException('E-mail sa nepodarilo odoslať. Skús to neskôr.');}
-   q('UPDATE students SET code_hash=? WHERE id=?',[password_hash($code,PASSWORD_DEFAULT),$id]);
-   flash('Prístupový kód bol odoslaný na školský e-mail. Starší kód už neplatí.');
+   flash('Prístupový kód bol odoslaný na školský e-mail.');
   }elseif($action==='login'){
    $id=(int)($_POST['student_id']??0);
    $s=q('SELECT * FROM students WHERE id=? AND class_id=?',[$id,$cid])->fetch();
-   if(!$s || !$s['code_hash'] || !password_verify(strtoupper(trim((string)($_POST['code']??''))),$s['code_hash']))
+   $attempts=(int)($_SESSION['login_attempts']??0);
+   $last=(int)($_SESSION['login_attempt_time']??0);
+   if($last<time()-900)$attempts=0;
+   if($attempts>=10)throw new RuntimeException('Priveľa pokusov. Skús to o 15 minút.');
+   $_SESSION['login_attempts']=$attempts+1;$_SESSION['login_attempt_time']=time();
+   if(!$s || !hash_equals(student_code($s),strtoupper(trim((string)($_POST['code']??'')))))
     throw new RuntimeException('Nesprávne meno alebo prístupový kód.');
-   session_regenerate_id(true);$_SESSION['student_id']=(int)$s['id'];flash('Prihlásenie úspešné.');
+   session_regenerate_id(true);$_SESSION['login_attempts']=0;$_SESSION['student_id']=(int)$s['id'];flash('Prihlásenie úspešné.');
   }elseif(in_array($action,['topic','slot'],true)){
    $me=student();
    if(!$me || (int)$me['class_id']!==$cid)throw new RuntimeException('Najprv sa prihlás.');
@@ -106,7 +110,7 @@ function time_label(string $start,int $slot): string {
 <input type="hidden" name="lesson_id" value="<?=h($mine['lesson_id']??0)?>"><input type="hidden" name="slot" value="<?=h($mine['slot']??0)?>"><button name="action" value="slot">Uložiť termín</button></form>
 </div></section>
 <?php else: ?>
-<div class="columns"><section class="panel"><h3>Poslať nový prístupový kód</h3><p class="muted small">Kód príde na školský e-mail. Nový kód nahradí predchádzajúci.</p><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="request_student">Meno</label><select id="request_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><button name="action" value="request">Poslať kód e-mailom</button></form></section>
+<div class="columns"><section class="panel"><h3>Poslať nový prístupový kód</h3><p class="muted small">Kód príde na školský e-mail. Pri opakovanom vyžiadaní zostáva rovnaký.</p><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="request_student">Meno</label><select id="request_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><button name="action" value="request">Poslať kód e-mailom</button></form></section>
 <section class="panel"><h3>Prihlásenie a zmena výberu</h3><form method="post"><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>"><label for="login_student">Meno</label><select id="login_student" name="student_id" required><option value="">Vyber svoje meno</option><?php foreach($students as $s):?><option value="<?=$s['id']?>"><?=h($s['name'])?></option><?php endforeach;?></select><label for="code">Prístupový kód z e-mailu</label><input id="code" name="code" autocomplete="off" required><button name="action" value="login">Prihlásiť sa</button></form></section></div>
 <?php endif;?>
 <section class="panel"><h2>Harmonogram prezentácií</h2>
