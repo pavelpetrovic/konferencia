@@ -44,3 +44,10 @@ function send_code(string $address,string $name,string $code): void {
  $m->Body="Ahoj $name,\n\nTvoj prístupový kód: $code\n\nPrihlásenie: ".rtrim($config['base_url'],'/')."\n\nAk si si kód nevyžiadal(a), túto správu ignoruj.\n";
  $m->send();
 }
+
+// Permanent per-student code derived from a private server-side secret.
+function student_code(array $s): string {
+ global $config;
+ if(empty($config['code_secret']) || strlen($config['code_secret'])<32)throw new RuntimeException('Configure a strong code_secret in config.php');
+ return strtoupper(substr(hash_hmac('sha256','conference-student:'.$s['id'].':'.strtolower($s['email']),$config['code_secret']),0,16));
+}
