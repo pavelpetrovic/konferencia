@@ -29,7 +29,7 @@ Imports update matching records and preserve existing assignments; they do not d
 - Students select their class and name and request an access code by email.
 - Requesting a code again sends the same permanent code (derived using the private server secret). Requests have a two-minute cooldown.
 - Students sign in using their name and emailed code. Session login remains valid until logout or session expiry.
-- Each student can choose one topic and one slot independently, and change or release either.
+- Each student chooses a topic and a presentation slot in one form, using one **Uložiť výber** button. Both values are saved together; either can be left unselected or cleared independently.
 - Each topic and each lesson slot can belong to at most one student.
 - The schedule and unassigned topics are public for the selected class; changes require student authentication.
 - Editing `lessons.starts_at` moves all 8 assigned slots together. Two lessons can share a date, but not the same start time in one class.
