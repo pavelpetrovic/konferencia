@@ -52,7 +52,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     q('UPDATE selections SET topic_id=? WHERE student_id=?',[$topic?:null,$me['id']]);
     flash('Výber témy bol uložený.');
    }else{
-    $lesson=(int)($_POST['lesson_id']??0);$slot=(int)($_POST['slot']??0);
+    $choice=(string)($_POST['slot_choice']??'');
+    if(!preg_match('/^(0:0|[1-9][0-9]*:[1-8])$/D',$choice))throw new RuntimeException('Neplatný termín.');
+    [$lesson,$slot]=array_map('intval',explode(':',$choice));
     if(($lesson===0)!==($slot===0) || $slot<0 || $slot>8)throw new RuntimeException('Neplatný termín.');
     if($lesson && !q('SELECT id FROM lessons WHERE id=? AND class_id=? AND starts_at>NOW()',[$lesson,$cid])->fetch())
      throw new RuntimeException('Tento termín nie je dostupný.');
@@ -103,7 +105,7 @@ function time_label(string $start,int $slot): string {
 <option value="<?=$t['id']?>" <?=$taken?'disabled':''?> <?=($mine['topic_id']??null)==$t['id']?'selected':''?>><?=h($t['number'].'. '.$t['title'].($taken?' (obsadené)':''))?></option>
 <?php endforeach;?></select><button name="action" value="topic">Uložiť tému</button></form>
 <form method="post"><h3>Môj termín</h3><input type="hidden" name="csrf" value="<?=h(csrf())?>"><input type="hidden" name="class" value="<?=$cid?>">
-<label for="slot">Vyber alebo zmeň termín</label><select name="slot_choice" id="slot" onchange="const [l,s]=this.value.split(':');this.form.lesson_id.value=l;this.form.slot.value=s"><option value="0:0">— Bez termínu —</option>
+<label for="slot">Vyber alebo zmeň termín</label><select name="slot_choice" id="slot"><option value="0:0">— Bez termínu —</option>
 <?php foreach($lessons as $l):if(strtotime($l['starts_at'])<=time())continue;for($n=1;$n<=8;$n++):$key=$l['id'].':'.$n;$taken=isset($takenSlots[$key])&&$takenSlots[$key]!==(int)$me['id']; ?>
 <option value="<?=$key?>" <?=$taken?'disabled':''?> <?=($mine['lesson_id']??null)==$l['id']&&($mine['slot']??null)==$n?'selected':''?>><?=h(date('d.m.Y',strtotime($l['starts_at'])).' '.time_label($l['starts_at'],$n).($taken?' (obsadené)':''))?></option>
 <?php endfor;endforeach;?></select>
